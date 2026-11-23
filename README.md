@@ -8,7 +8,7 @@ DistilBERT, with a Streamlit app. Dataset: Kaggle *Amazon Fine Food Reviews*.
 - [x] Step 1: Problem scope (goals, labels, metrics, config)
 - [x] Step 2: Data collection and cleaning (duplicates, empty and non-English reviews, sentiment labels, class balance)
 - [x] Step 3: Text preprocessing (HTML, URLs, contractions, emoticons, spaCy lemmas, negations kept)
-- [ ] Step 4: Exploratory text analysis
+- [x] Step 4: Exploratory text analysis (length, words, phrases, word clouds, distinctive words, sentiment trend)
 - [ ] Step 5: Classical ML (TF-IDF + LR / NB / SVM)
 - [ ] Step 6: Transformers (DistilBERT)
 - [ ] Step 7: Topic modelling (LDA, BERTopic)
@@ -55,6 +55,20 @@ contractions (`don't` becomes `do not`), lower-casing, dropping digits and symbo
 removing stop words. Negations and intensifiers (`not`, `no`, `never`, `but`, `very`, `too` and others, listed in
 `SENTIMENT_WORDS`) are kept, because "not good" must not turn into "good".
 
+## Exploratory analysis (Step 4)
+
+```powershell
+pip install wordcloud
+python -m reviews.explore
+```
+
+Writes seven charts to `reports/figures/` (length, top words, word clouds, bigrams, trigrams, distinctive words,
+sentiment trend) and the numbers behind them to `reports/eda_summary.json`. Word and phrase charts hide the words in
+`DISPLAY_STOPWORDS` (negations, `very`, and generic verbs such as `make` and `use`) so topics stand out; phrases are
+only hidden when *every* word is on that list, so "not good" stays. "Distinctive words" ranks words by a log-odds
+z-score, so it shows what separates negative from positive reviews rather than what is common to both. Phrases are
+counted on at most 150,000 reviews per sentiment (seeded), and the trend skips months with under 200 reviews.
+
 ## Cleaning rules (Step 2)
 
 Applied in this order, with the number of rows each rule removes written to `reports/data_quality.json`:
@@ -76,6 +90,7 @@ to missing, not dropped, because the text is still fine.
 reviews/   config.py (all settings), labels.py (stars to sentiment, class balance),
            data.py (load and clean), prepare.py (Step 2 pipeline),
            text.py (text normalisation, lemmas), preprocess.py (Step 3 pipeline),
+           eda.py (counts, phrases, trend), plots.py (charts), explore.py (Step 4 pipeline),
            metrics.py (macro-F1, report, inference time, target checks), logging_utils.py
 tests/     pytest suite
 docs/      project_brief.md

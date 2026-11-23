@@ -49,6 +49,16 @@ class PathsConfig:
         return self.reports_path / TextConfig.report_name
 
     @property
+    def figures_path(self) -> Path:
+        """Charts written by Step 4."""
+        return self.reports_path / EdaConfig.figures_dir
+
+    @property
+    def eda_summary_path(self) -> Path:
+        """JSON summary written by Step 4."""
+        return self.reports_path / EdaConfig.summary_name
+
+    @property
     def quality_report_path(self) -> Path:
         """JSON data-quality report written by Step 2."""
         return self.reports_path / "data_quality.json"
@@ -136,6 +146,40 @@ class TextConfig:
             raise ValueError("batch_size, n_process, sample_rows and min_token_length must be positive")
 
 
+# Words that are correct for the classifiers but drown out everything else in word clouds, frequency charts and topic
+# models: negations and intensifiers, plus verbs and fillers that appear in every review whatever the topic.
+DISPLAY_STOPWORDS: Tuple[str, ...] = SENTIMENT_WORDS + (
+    "product", "make", "use", "try", "buy", "just", "get", "one", "would", "also", "really", "go", "even", "much",
+    "can", "will", "come", "take", "give", "want", "need", "think", "say", "see", "know", "look", "order", "bought",
+)
+
+
+@dataclass(frozen=True)
+class EdaConfig:
+    """Step 4 exploratory analysis settings."""
+
+    top_n: int = 20                         # words / phrases shown per chart
+    ngram_top: int = 15
+    ngram_max_docs: int = 150_000           # per sentiment; phrase counting on every review adds time, not insight
+    min_count_distinctive: int = 50         # ignore words rarer than this when ranking by distinctiveness
+    prior_strength: float = 500.0           # total weight of the smoothing prior in the log-odds z-score
+    cloud_max_words: int = 150
+    min_month_reviews: int = 200            # months with fewer reviews give noisy shares and are left out of the trend
+    length_clip_quantile: float = 0.99      # histogram range, so a few 3,000-word reviews do not flatten the chart
+    display_stopwords: Tuple[str, ...] = DISPLAY_STOPWORDS
+    dpi: int = 150
+    figures_dir: str = "figures"
+    summary_name: str = "eda_summary.json"
+
+    def __post_init__(self) -> None:
+        """Fail loudly on inconsistent settings."""
+        if min(self.top_n, self.ngram_top, self.ngram_max_docs, self.min_count_distinctive, self.cloud_max_words,
+               self.min_month_reviews, self.dpi) < 1:
+            raise ValueError("EdaConfig counts and dpi must be positive")
+        if self.prior_strength <= 0 or not 0.5 < self.length_clip_quantile <= 1:
+            raise ValueError("prior_strength must be positive and length_clip_quantile in (0.5, 1]")
+
+
 @dataclass(frozen=True)
 class LabelConfig:
     """Star rating to sentiment, exactly as the brief defines it."""
@@ -197,3 +241,4 @@ class ProjectConfig:
     targets: TargetConfig = field(default_factory=TargetConfig)
     aspects: AspectConfig = field(default_factory=AspectConfig)
     text: TextConfig = field(default_factory=TextConfig)
+    eda: EdaConfig = field(default_factory=EdaConfig)
