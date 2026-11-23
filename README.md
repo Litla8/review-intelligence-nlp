@@ -7,7 +7,7 @@ DistilBERT, with a Streamlit app. Dataset: Kaggle *Amazon Fine Food Reviews*.
 
 - [x] Step 1: Problem scope (goals, labels, metrics, config)
 - [x] Step 2: Data collection and cleaning (duplicates, empty and non-English reviews, sentiment labels, class balance)
-- [ ] Step 3: Text preprocessing
+- [x] Step 3: Text preprocessing (HTML, URLs, contractions, emoticons, spaCy lemmas, negations kept)
 - [ ] Step 4: Exploratory text analysis
 - [ ] Step 5: Classical ML (TF-IDF + LR / NB / SVM)
 - [ ] Step 6: Transformers (DistilBERT)
@@ -40,6 +40,21 @@ python -m reviews.prepare    # writes data/processed/reviews_clean.parquet and r
 From Step 3 on: `pip install -r requirements-nlp.txt`. Install PyTorch first with the CUDA 12.8 build, which the
 RTX 50-series GPUs need: `pip install torch --index-url https://download.pytorch.org/whl/cu128`.
 
+## Text preprocessing (Step 3)
+
+```powershell
+pip install spacy
+python -m spacy download en_core_web_sm
+python -m reviews.preprocess --sample   # 5,000 reviews, to check the setup
+python -m reviews.preprocess            # all reviews: data/processed/reviews_text.parquet, reports/text_report.json
+```
+
+Two versions of every review are kept: the untouched `Text` for transformers, and `text_clean` for TF-IDF, topic
+models and word clouds. `text_clean` is built by removing HTML and URLs, turning `:)` and `:(` into words, expanding
+contractions (`don't` becomes `do not`), lower-casing, dropping digits and symbols, lemmatizing with spaCy and
+removing stop words. Negations and intensifiers (`not`, `no`, `never`, `but`, `very`, `too` and others, listed in
+`SENTIMENT_WORDS`) are kept, because "not good" must not turn into "good".
+
 ## Cleaning rules (Step 2)
 
 Applied in this order, with the number of rows each rule removes written to `reports/data_quality.json`:
@@ -60,6 +75,7 @@ to missing, not dropped, because the text is still fine.
 ```
 reviews/   config.py (all settings), labels.py (stars to sentiment, class balance),
            data.py (load and clean), prepare.py (Step 2 pipeline),
+           text.py (text normalisation, lemmas), preprocess.py (Step 3 pipeline),
            metrics.py (macro-F1, report, inference time, target checks), logging_utils.py
 tests/     pytest suite
 docs/      project_brief.md

@@ -39,6 +39,15 @@ class PathsConfig:
         """Cleaned, labelled reviews written by Step 2."""
         return self.processed_path / "reviews_clean.parquet"
 
+    def text_path(self, sample: bool = False) -> Path:
+        """Preprocessed reviews written by Step 3 (the sample file is for quick checks)."""
+        return self.processed_path / (TextConfig.sample_output_name if sample else TextConfig.output_name)
+
+    @property
+    def text_report_path(self) -> Path:
+        """JSON report written by Step 3."""
+        return self.reports_path / TextConfig.report_name
+
     @property
     def quality_report_path(self) -> Path:
         """JSON data-quality report written by Step 2."""
@@ -90,6 +99,41 @@ class DataConfig:
             raise ValueError("min_ascii_share must be between 0 and 1")
         if not self.duplicate_key:
             raise ValueError("duplicate_key must not be empty")
+
+
+# Words kept even though they appear in the usual stop-word lists: they flip or scale sentiment
+# ("not good" must not become "good").
+SENTIMENT_WORDS: Tuple[str, ...] = (
+    "not", "no", "nor", "never", "none", "nothing", "nobody", "nowhere", "neither", "cannot", "without",
+    "but", "very", "too", "more", "most", "less", "least", "few", "only", "against", "hardly", "barely",
+)
+
+
+@dataclass(frozen=True)
+class TextConfig:
+    """Step 3 text preprocessing settings."""
+
+    spacy_model: str = "en_core_web_sm"
+    lowercase: bool = True
+    remove_html: bool = True
+    remove_urls: bool = True
+    map_emoticons: bool = True              # ":)" and ":(" carry sentiment in 2007-2012 reviews
+    expand_contractions: bool = True
+    remove_digits: bool = True
+    remove_stopwords: bool = True
+    keep_words: Tuple[str, ...] = SENTIMENT_WORDS
+    min_token_length: int = 2               # drops stray single letters left by cleaning
+    batch_size: int = 1000
+    n_process: int = 4                      # spaCy worker processes; 1 is the safe fallback
+    sample_rows: int = 5000                 # size of the quick smoke-test run
+    output_name: str = "reviews_text.parquet"
+    sample_output_name: str = "reviews_text_sample.parquet"
+    report_name: str = "text_report.json"
+
+    def __post_init__(self) -> None:
+        """Fail loudly on inconsistent settings."""
+        if self.batch_size < 1 or self.n_process < 1 or self.sample_rows < 1 or self.min_token_length < 1:
+            raise ValueError("batch_size, n_process, sample_rows and min_token_length must be positive")
 
 
 @dataclass(frozen=True)
@@ -152,3 +196,4 @@ class ProjectConfig:
     split: SplitConfig = field(default_factory=SplitConfig)
     targets: TargetConfig = field(default_factory=TargetConfig)
     aspects: AspectConfig = field(default_factory=AspectConfig)
+    text: TextConfig = field(default_factory=TextConfig)
