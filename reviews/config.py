@@ -181,6 +181,39 @@ class EdaConfig:
 
 
 @dataclass(frozen=True)
+class ClassicalConfig:
+    """Step 5 settings: TF-IDF / bag-of-words features and the classical models with their tuning grids."""
+
+    ngram_range: Tuple[int, int] = (1, 2)   # bigrams catch "not good" and "waste of money"
+    min_df: int = 5                         # a term must appear in at least 5 training reviews
+    max_features: int = 200_000
+    sublinear_tf: bool = True               # 1 + log(tf): a word repeated ten times is not ten times as strong
+    c_grid: Tuple[float, ...] = (0.3, 1.0, 3.0)         # Logistic Regression and Linear SVM
+    alpha_grid: Tuple[float, ...] = (0.1, 0.5, 1.0)     # Naive Bayes smoothing
+    max_iter: int = 1000
+    inference_sample: int = 5000            # reviews used to time prediction (vectorising included)
+    inference_repeats: int = 3
+    top_terms: int = 25
+    error_rows: int = 100                   # most confident mistakes saved for reading
+    sample_rows: int = 40_000               # size of the quick smoke-test run
+    model_name: str = "classical_best"
+    comparison_name: str = "model_comparison"
+    results_name: str = "classical_results"
+    errors_name: str = "classical_errors"
+
+    def __post_init__(self) -> None:
+        """Fail loudly on inconsistent settings."""
+        low, high = self.ngram_range
+        if not 1 <= low <= high:
+            raise ValueError("ngram_range must be (low, high) with 1 <= low <= high")
+        if min(self.min_df, self.max_features, self.max_iter, self.inference_sample, self.inference_repeats,
+               self.top_terms, self.error_rows, self.sample_rows) < 1:
+            raise ValueError("counts in ClassicalConfig must be positive")
+        if not self.c_grid or not self.alpha_grid or min(self.c_grid + self.alpha_grid) <= 0:
+            raise ValueError("c_grid and alpha_grid must be non-empty and positive")
+
+
+@dataclass(frozen=True)
 class LabelConfig:
     """Star rating to sentiment, exactly as the brief defines it."""
 
@@ -242,3 +275,4 @@ class ProjectConfig:
     aspects: AspectConfig = field(default_factory=AspectConfig)
     text: TextConfig = field(default_factory=TextConfig)
     eda: EdaConfig = field(default_factory=EdaConfig)
+    classical: ClassicalConfig = field(default_factory=ClassicalConfig)

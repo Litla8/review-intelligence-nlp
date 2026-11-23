@@ -121,3 +121,39 @@ def plot_wordclouds(counts_by_class: Mapping[str, pd.Series], max_words: int, cl
         ax.axis("off")
     fig.tight_layout()
     return fig
+
+
+def plot_confusion_matrix(matrix: Any, classes: Any, title: str) -> Figure:
+    """Confusion matrix with row-normalised colours (share of each true class) and raw counts written in the cells."""
+    counts = np.asarray(matrix, dtype=float)
+    shares = counts / counts.sum(axis=1, keepdims=True).clip(min=1)
+    fig, ax = plt.subplots(figsize=(5.2, 4.6))
+    image = ax.imshow(shares, cmap="Blues", vmin=0, vmax=1)
+    ax.set_xticks(range(len(classes)), labels=list(classes))
+    ax.set_yticks(range(len(classes)), labels=list(classes))
+    ax.set_xlabel("Predicted")
+    ax.set_ylabel("Actual")
+    ax.set_title(title)
+    for i in range(len(classes)):
+        for j in range(len(classes)):
+            ax.text(j, i, f"{int(counts[i, j]):,}\n{shares[i, j]:.0%}", ha="center", va="center",
+                    color="white" if shares[i, j] > 0.5 else "black")
+    fig.colorbar(image, ax=ax, fraction=0.046, label="Share of actual class")
+    fig.tight_layout()
+    return fig
+
+
+def plot_model_comparison(table: pd.DataFrame) -> Figure:
+    """Test macro-F1 per model (left) and prediction time per 1,000 reviews (right)."""
+    ordered = table.sort_values("test_macro_f1")
+    fig, (left, right) = plt.subplots(1, 2, figsize=(11, 4.2))
+    left.barh(ordered["model"], ordered["test_macro_f1"], color=SENTIMENT_COLOURS["positive"])
+    left.set_xlim(0, 1)
+    left.set_xlabel("Test macro-F1 (higher is better)")
+    for y, value in enumerate(ordered["test_macro_f1"]):
+        left.text(value + 0.01, y, f"{value:.3f}", va="center")
+    timed = ordered[ordered["predict_seconds_per_1000"] > 0]
+    right.barh(timed["model"], timed["predict_seconds_per_1000"], color="#8C8C8C")
+    right.set_xlabel("Seconds to predict 1,000 reviews (lower is better)")
+    fig.tight_layout()
+    return fig

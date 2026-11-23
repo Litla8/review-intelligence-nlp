@@ -9,7 +9,7 @@ DistilBERT, with a Streamlit app. Dataset: Kaggle *Amazon Fine Food Reviews*.
 - [x] Step 2: Data collection and cleaning (duplicates, empty and non-English reviews, sentiment labels, class balance)
 - [x] Step 3: Text preprocessing (HTML, URLs, contractions, emoticons, spaCy lemmas, negations kept)
 - [x] Step 4: Exploratory text analysis (length, words, phrases, word clouds, distinctive words, sentiment trend)
-- [ ] Step 5: Classical ML (TF-IDF + LR / NB / SVM)
+- [x] Step 5: Classical ML (bag-of-words / TF-IDF with Naive Bayes, Logistic Regression, Linear SVM)
 - [ ] Step 6: Transformers (DistilBERT)
 - [ ] Step 7: Topic modelling (LDA, BERTopic)
 - [ ] Step 8: Aspect-based insights
@@ -69,6 +69,25 @@ only hidden when *every* word is on that list, so "not good" stays. "Distinctive
 z-score, so it shows what separates negative from positive reviews rather than what is common to both. Phrases are
 counted on at most 150,000 reviews per sentiment (seeded), and the trend skips months with under 200 reviews.
 
+## Classical models (Step 5)
+
+```powershell
+python -m reviews.train_classical --sample   # 40,000 reviews, a few minutes
+python -m reviews.train_classical            # all reviews
+```
+
+Positive vs negative only (neutral is dropped). Features come from `text_clean`: unigrams and bigrams, at least 5
+reviews per term, at most 200,000 terms. Four models are compared: bag-of-words + Naive Bayes, TF-IDF + Naive Bayes,
+TF-IDF + Logistic Regression and TF-IDF + Linear SVM, plus an "always predict the common class" baseline. Each is tuned
+on the validation set by macro-F1 and scored once on the test set; imbalance is handled with balanced class weights
+(or a uniform prior for Naive Bayes). The vectorisers are fitted on training reviews only. The best model, chosen on
+validation, is checked again on a chronological split (train on the oldest reviews, test on the newest) because
+sentiment drifts over the years.
+
+Writes `models/classical_best.joblib`, `reports/model_comparison.csv`, `reports/classical_results.json` (including the
+terms that push hardest towards each class), `reports/classical_errors.csv` (the mistakes the model was most sure
+about) and two charts in `reports/figures/`. Sample runs add `_sample` to every file name.
+
 ## Cleaning rules (Step 2)
 
 Applied in this order, with the number of rows each rule removes written to `reports/data_quality.json`:
@@ -91,6 +110,7 @@ reviews/   config.py (all settings), labels.py (stars to sentiment, class balanc
            data.py (load and clean), prepare.py (Step 2 pipeline),
            text.py (text normalisation, lemmas), preprocess.py (Step 3 pipeline),
            eda.py (counts, phrases, trend), plots.py (charts), explore.py (Step 4 pipeline),
+           classical.py (features, models, splits), train_classical.py (Step 5 pipeline),
            metrics.py (macro-F1, report, inference time, target checks), logging_utils.py
 tests/     pytest suite
 docs/      project_brief.md
