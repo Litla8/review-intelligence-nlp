@@ -34,10 +34,28 @@ class PathsConfig:
     def reports_path(self) -> Path:
         return self.root / self.reports_dir
 
+    @property
+    def clean_path(self) -> Path:
+        """Cleaned, labelled reviews written by Step 2."""
+        return self.processed_path / "reviews_clean.parquet"
+
+    @property
+    def quality_report_path(self) -> Path:
+        """JSON data-quality report written by Step 2."""
+        return self.reports_path / "data_quality.json"
+
+
+# Very common English words. A real review of a few sentences contains several of them; text in another language
+# or random characters contains almost none. Used by the dependency-free language check in Step 2.
+ENGLISH_STOPWORDS: Tuple[str, ...] = (
+    "the", "and", "is", "it", "to", "of", "a", "i", "this", "for", "in", "was", "with", "not", "but", "have",
+    "are", "that", "my", "you", "on", "very", "so", "as", "they", "be", "at", "were", "or", "we", "had", "has",
+)
+
 
 @dataclass(frozen=True)
 class DataConfig:
-    """Columns of the Kaggle Amazon Fine Food Reviews file and cleaning rules."""
+    """Columns of the Kaggle Amazon Fine Food Reviews file and the cleaning rules."""
 
     text_column: str = "Text"
     summary_column: str = "Summary"
@@ -47,9 +65,31 @@ class DataConfig:
     user_column: str = "UserId"
     helpful_yes_column: str = "HelpfulnessNumerator"
     helpful_total_column: str = "HelpfulnessDenominator"
+    id_column: str = "Id"
     min_words: int = 3                      # shorter reviews carry no usable signal
     english_only: bool = True
-    drop_duplicates_on: Tuple[str, ...] = ("UserId", "ProductId", "Time", "Text")
+    # Exact duplicates: the same person posting the same words for the same product at the same moment.
+    duplicate_key: Tuple[str, ...] = ("UserId", "ProductId", "Time", "Text")
+    drop_duplicate_texts: bool = True       # the same review copied across product variants; leaks across splits
+    # Language check (no extra dependency): mostly ASCII letters, and enough common English words.
+    min_ascii_share: float = 0.9
+    short_text_words: int = 6               # below this many words only the ASCII test applies
+    min_stopword_hits: int = 2
+
+    @property
+    def required_columns(self) -> Tuple[str, ...]:
+        return (self.id_column, self.product_column, self.user_column, self.helpful_yes_column,
+                self.helpful_total_column, self.rating_column, self.time_column, self.summary_column,
+                self.text_column)
+
+    def __post_init__(self) -> None:
+        """Fail loudly on inconsistent settings."""
+        if self.min_words < 1 or self.short_text_words < 1 or self.min_stopword_hits < 0:
+            raise ValueError("word thresholds must be positive")
+        if not 0 <= self.min_ascii_share <= 1:
+            raise ValueError("min_ascii_share must be between 0 and 1")
+        if not self.duplicate_key:
+            raise ValueError("duplicate_key must not be empty")
 
 
 @dataclass(frozen=True)
