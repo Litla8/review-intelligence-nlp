@@ -332,24 +332,59 @@ class TargetConfig:
 
 
 def _default_aspects() -> Dict[str, Tuple[str, ...]]:
-    """Seed keywords per aspect for food reviews; Step 8 extends them with discovered topics."""
+    """Whole-word keywords per aspect, with common inflections (matching is on raw sentences, not lemmas).
+
+    ``listing`` and ``safety`` were added after Steps 4 and 7: "description", "picture" and "refund" kept appearing
+    among the words most typical of negative reviews, and a China-made pet-treat topic was over 50% negative.
+    """
     return {
-        "taste": ("taste", "tasty", "flavor", "delicious", "bland", "sweet", "bitter", "salty", "aroma"),
-        "price": ("price", "cheap", "expensive", "cost", "value", "worth", "overpriced", "deal"),
-        "shipping": ("shipping", "shipped", "delivery", "arrived", "late", "delay", "package"),
-        "packaging": ("packaging", "packed", "box", "damaged", "broken", "leak", "seal", "crushed"),
-        "freshness": ("fresh", "stale", "expired", "expiration", "rancid", "moldy", "date"),
+        "taste": ("taste", "tastes", "tasted", "tasty", "tasteless", "flavor", "flavors", "flavorful", "delicious", "bland",
+                  "sweet", "sweeter", "bitter", "salty", "aroma"),
+        "price": ("price", "priced", "pricey", "cheap", "cheaper", "expensive", "cost", "costs", "value", "worth",
+                  "overpriced", "deal", "bargain"),
+        "shipping": ("shipping", "shipped", "ship", "delivery", "delivered", "arrived", "arrive", "late", "delay", "delayed"),
+        "packaging": ("packaging", "packed", "damaged", "dented", "broken", "leaked", "leaking", "leak", "crushed", "sealed",
+                      "seal", "torn", "tampered"),
+        "freshness": ("fresh", "stale", "expired", "expiration", "expiry", "rancid", "moldy", "mold", "spoiled"),
         "quality": ("quality", "ingredients", "artificial", "organic", "natural", "texture"),
-        "health": ("healthy", "sugar", "calories", "allergy", "gluten", "diet", "protein"),
-        "service": ("customer service", "refund", "return", "seller", "support", "replacement"),
+        "health": ("healthy", "unhealthy", "sugar", "calories", "allergy", "allergic", "gluten", "diet", "protein", "sodium"),
+        "service": ("service", "refund", "refunded", "return", "returned", "seller", "support", "replacement", "replaced",
+                    "customer"),
+        "listing": ("description", "described", "picture", "pictures", "photo", "advertised", "listing", "listed", "label",
+                    "labeled", "misleading"),
+        "safety": ("sick", "vomit", "vomiting", "diarrhea", "recall", "fda", "illness", "poison", "toxic", "died"),
     }
 
 
 @dataclass(frozen=True)
 class AspectConfig:
-    """Aspects for aspect-based sentiment (Step 8)."""
+    """Step 8 settings: aspect keywords, sentence scoring and drop detection."""
 
     keywords: Dict[str, Tuple[str, ...]] = field(default_factory=_default_aspects)
+    min_sentence_words: int = 3
+    neutral_low: float = 0.25               # sentences with P(positive) between low and high count as neutral / mixed
+    neutral_high: float = 0.75
+    max_length: int = 128                   # tokens per sentence for the transformer
+    batch_size: int = 256
+    sample_rows: int = 20_000               # size of the quick smoke-test run
+    examples_per_aspect: int = 5
+    min_period_sentences: int = 100         # a month with fewer polar sentences for an aspect is not trended
+    min_period_reviews: int = 200           # a month with fewer reviews is not trended
+    drop_window: int = 12                   # months in the trailing baseline
+    drop_min_periods: int = 6
+    drop_z: float = 2.0                     # flag a month this many standard deviations worse than its baseline
+    summary_name: str = "insights_summary"
+
+    def __post_init__(self) -> None:
+        """Fail loudly on inconsistent settings."""
+        if not self.keywords or any(not words for words in self.keywords.values()):
+            raise ValueError("every aspect needs at least one keyword")
+        if not 0 < self.neutral_low < self.neutral_high < 1:
+            raise ValueError("need 0 < neutral_low < neutral_high < 1")
+        if min(self.min_sentence_words, self.max_length, self.batch_size, self.sample_rows, self.examples_per_aspect,
+               self.min_period_sentences, self.min_period_reviews, self.drop_window, self.drop_min_periods) < 1 \
+                or self.drop_min_periods > self.drop_window or self.drop_z <= 0:
+            raise ValueError("counts must be positive, drop_min_periods <= drop_window and drop_z > 0")
 
 
 @dataclass(frozen=True)

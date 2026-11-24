@@ -186,3 +186,51 @@ def plot_topic_negativity(table: pd.DataFrame, overall_share: float, title: str,
     ax.legend(frameon=False, loc="lower right")
     fig.tight_layout()
     return fig
+
+
+def plot_aspect_pain_points(summary: pd.DataFrame) -> Figure:
+    """Left: share of negative vs positive reviews that mention each aspect. Right: negative share of confident sentences."""
+    data = summary.iloc[::-1]
+    fig, (left, right) = plt.subplots(1, 2, figsize=(12, max(4.0, 0.5 * len(data) + 1.5)), sharey=True)
+    y = np.arange(len(data))
+    left.barh(y + 0.2, data["neg_review_rate"], height=0.4, color=SENTIMENT_COLOURS["negative"], label="negative reviews")
+    left.barh(y - 0.2, data["pos_review_rate"], height=0.4, color=SENTIMENT_COLOURS["positive"], label="positive reviews")
+    left.set_yticks(y, labels=list(data["aspect"]))
+    left.set_xlabel("Share of reviews mentioning the aspect")
+    left.set_title("Who talks about it")
+    left.legend(frameon=False, loc="lower right")
+    right.barh(y, data["neg_sentence_share"], color="#8C8C8C")
+    right.set_xlim(0, 1)
+    right.set_xlabel("Negative share of confident sentences")
+    right.set_title("How they talk about it")
+    fig.tight_layout()
+    return fig
+
+
+def plot_aspect_trend(trend: pd.DataFrame) -> Figure:
+    """Yearly negative share of sentences per aspect, one line each."""
+    fig, ax = plt.subplots(figsize=(9, 5))
+    for aspect in trend.columns:
+        series = trend[aspect].dropna()
+        if len(series):
+            ax.plot(series.index.year, series.to_numpy(), marker="o", linewidth=1.8, label=aspect)
+    ax.set_ylabel("Negative share of confident sentences")
+    ax.set_xlabel("Year")
+    ax.set_title("How negative people are about each aspect, by year")
+    ax.legend(frameon=False, ncol=2, fontsize=9)
+    return fig
+
+
+def plot_monthly_flags(flags: pd.DataFrame, title: str, ylabel: str) -> Figure:
+    """Monthly values with their trailing baseline and flagged months circled."""
+    fig, ax = plt.subplots(figsize=(10, 4.2))
+    ax.plot(flags.index, flags["value"], color=SENTIMENT_COLOURS["positive"], linewidth=1.8, label="month")
+    ax.plot(flags.index, flags["baseline"], color="#8C8C8C", linestyle="--", label="trailing 12-month average")
+    marked = flags[flags["flagged"]]
+    ax.scatter(marked.index, marked["value"], s=90, facecolors="none", edgecolors=SENTIMENT_COLOURS["negative"],
+               linewidths=2, label="flagged", zorder=3)
+    ax.set_title(title)
+    ax.set_ylabel(ylabel)
+    ax.legend(frameon=False)
+    fig.tight_layout()
+    return fig

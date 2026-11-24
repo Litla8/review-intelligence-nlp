@@ -12,7 +12,7 @@ DistilBERT, with a Streamlit app. Dataset: Kaggle *Amazon Fine Food Reviews*.
 - [x] Step 5: Classical ML (bag-of-words / TF-IDF with Naive Bayes, Logistic Regression, Linear SVM)
 - [x] Step 6: Transformers (DistilBERT fine-tuned with the Hugging Face Trainer)
 - [x] Step 7: Topic modelling (LDA, BERTopic, c_v coherence)
-- [ ] Step 8: Aspect-based insights
+- [x] Step 8: Aspect-based insights (pain points per aspect, monthly trend with drop flags)
 - [ ] Step 9: Summarization and Streamlit app
 
 ## Scope (Step 1)
@@ -129,6 +129,24 @@ reviews than average), which feeds the pain-point report in Step 8. Writes `repo
 `reports/topics_lda.csv`, `reports/topics_bertopic.csv`, `data/processed/topic_assignments.parquet`, the models and
 three charts. File names get `_negative` or `_sample` as suffixes.
 
+## Aspect insights and trend flags (Step 8)
+
+```powershell
+python -m reviews.insights --sample    # 20,000 reviews, a couple of minutes
+python -m reviews.insights             # all reviews (needs the Step 6 model)
+```
+
+Reviews are split into sentences. A sentence that contains an aspect keyword (taste, price, shipping, packaging,
+freshness, quality, health, service, plus `listing` and `safety`, added because Steps 4 and 7 pointed at them) is scored
+by the fine-tuned DistilBERT; sentences it is unsure about (probability between 0.25 and 0.75) count as neutral and are
+left out of the shares. For each aspect the report gives the share of negative and positive reviews that mention it,
+the ratio between them, and the negative share of confident sentences. A monthly trend flags any month whose positive
+share, mean stars or aspect negativity is more than 2 standard deviations worse than the average of the previous 12
+months. Keyword matching is a simple lexicon, so a word like "box" or "value" is not always about the aspect.
+
+Writes `reports/aspect_summary.csv`, `aspect_trend_yearly.csv`, `monthly_trend.csv`, `aspect_examples.csv` (the most
+negative sentences per aspect, for quotes), `insights_summary.json` and three charts. Sample runs add `_sample`.
+
 ## Cleaning rules (Step 2)
 
 Applied in this order, with the number of rows each rule removes written to `reports/data_quality.json`:
@@ -154,6 +172,7 @@ reviews/   config.py (all settings), labels.py (stars to sentiment, class balanc
            classical.py (features, models, splits), train_classical.py (Step 5 pipeline),
            transformer.py (thresholds, drift slices, helpers), train_transformer.py (Step 6 pipeline),
            topics.py (LDA, BERTopic, coherence), run_topics.py (Step 7 pipeline),
+           aspects.py (aspect tags, sentence sentiment, drop flags), insights.py (Step 8 pipeline),
            metrics.py (macro-F1, report, inference time, target checks), logging_utils.py
 tests/     pytest suite
 docs/      project_brief.md
