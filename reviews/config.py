@@ -256,6 +256,53 @@ class TransformerConfig:
 
 
 @dataclass(frozen=True)
+class TopicConfig:
+    """Step 7 settings: LDA (scikit-learn) and BERTopic, both scored with c_v coherence."""
+
+    sample_rows: int = 100_000              # reviews modelled per run (seeded); embedding 390k reviews adds time, not insight
+    sweep_rows: int = 40_000                # smaller sample used only to choose the number of LDA topics
+    k_grid: Tuple[int, ...] = (6, 8, 10, 12, 15, 20)
+    lda_passes: int = 5                     # passes over the data (scikit-learn max_iter)
+    lda_iterations: int = 100               # inner iterations per mini-batch
+    lda_batch_size: int = 2048
+    workers: int = 3                        # parallel jobs for LDA
+    no_below: int = 20                      # drop words found in fewer reviews than this
+    no_above: float = 0.5                   # drop words found in more than half of the reviews
+    keep_n: int = 20_000                    # vocabulary size cap
+    coherence_window: int = 110
+    top_words: int = 10
+    coherence_rows: int = 20_000            # c_v is slow, so it is measured on a seeded subset of reviews
+    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    embed_batch_size: int = 256
+    min_topic_size: int = 100               # smallest BERTopic cluster
+    umap_neighbors: int = 15
+    umap_components: int = 5
+    smoke_rows: int = 15_000                # quick-check run
+    smoke_k_grid: Tuple[int, ...] = (6, 10)
+    smoke_min_topic_size: int = 30
+    summary_name: str = "topic_summary"
+
+    def __post_init__(self) -> None:
+        """Fail loudly on inconsistent settings."""
+        if min(self.sample_rows, self.sweep_rows, self.lda_passes, self.lda_iterations, self.lda_batch_size, self.workers, self.coherence_window,
+               self.no_below, self.keep_n, self.top_words, self.coherence_rows, self.embed_batch_size,
+               self.min_topic_size, self.umap_neighbors, self.umap_components, self.smoke_rows,
+               self.smoke_min_topic_size) < 1:
+            raise ValueError("counts in TopicConfig must be positive")
+        if not self.k_grid or not self.smoke_k_grid or min(self.k_grid + self.smoke_k_grid) < 2:
+            raise ValueError("k_grid values must be 2 or more")
+        if not 0 < self.no_above <= 1:
+            raise ValueError("no_above must be in (0, 1]")
+
+    def for_smoke(self) -> "TopicConfig":
+        """A copy sized for a few-minute check of the setup."""
+        from dataclasses import replace
+        return replace(self, sample_rows=self.smoke_rows, sweep_rows=min(self.sweep_rows, self.smoke_rows),
+                       k_grid=self.smoke_k_grid, min_topic_size=self.smoke_min_topic_size,
+                       coherence_rows=min(self.coherence_rows, self.smoke_rows), no_below=min(self.no_below, 5))
+
+
+@dataclass(frozen=True)
 class LabelConfig:
     """Star rating to sentiment, exactly as the brief defines it."""
 
@@ -319,3 +366,4 @@ class ProjectConfig:
     eda: EdaConfig = field(default_factory=EdaConfig)
     classical: ClassicalConfig = field(default_factory=ClassicalConfig)
     transformer: TransformerConfig = field(default_factory=TransformerConfig)
+    topics: TopicConfig = field(default_factory=TopicConfig)

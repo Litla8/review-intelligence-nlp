@@ -157,3 +157,32 @@ def plot_model_comparison(table: pd.DataFrame) -> Figure:
     right.set_xlabel("Seconds to predict 1,000 reviews (lower is better)")
     fig.tight_layout()
     return fig
+
+
+def plot_coherence_sweep(sweep: Mapping[int, float], chosen: int, target: float) -> Figure:
+    """c_v coherence for each number of LDA topics, with the chosen value marked and the target as a dashed line."""
+    ks = sorted(sweep)
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(ks, [sweep[k] for k in ks], marker="o", color=SENTIMENT_COLOURS["positive"], linewidth=2)
+    ax.scatter([chosen], [sweep[chosen]], s=140, facecolors="none", edgecolors=SENTIMENT_COLOURS["negative"], linewidths=2,
+               label=f"chosen: {chosen} topics")
+    ax.axhline(target, linestyle="--", color="#8C8C8C", label=f"target {target}")
+    ax.set_xlabel("Number of topics")
+    ax.set_ylabel("c_v coherence")
+    ax.set_title("LDA coherence by number of topics")
+    ax.legend(frameon=False)
+    return fig
+
+
+def plot_topic_negativity(table: pd.DataFrame, overall_share: float, title: str, max_topics: int = 25) -> Figure:
+    """Negative-review share of each topic (largest first), with the overall share as a dashed line."""
+    data = table.head(max_topics).iloc[::-1]
+    labels = [f"T{t}: {' '.join(str(w).split()[:4])}" for t, w in zip(data["topic"], data["top_words"])]
+    fig, ax = plt.subplots(figsize=(8.5, max(3.5, 0.34 * len(data) + 1.5)))
+    ax.barh(labels, data["negative_share"], color=SENTIMENT_COLOURS["negative"])
+    ax.axvline(overall_share, linestyle="--", color="#8C8C8C", label=f"overall {overall_share:.0%}")
+    ax.set_xlabel("Share of the topic's reviews that are negative")
+    ax.set_title(title)
+    ax.legend(frameon=False, loc="lower right")
+    fig.tight_layout()
+    return fig

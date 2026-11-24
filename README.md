@@ -11,7 +11,7 @@ DistilBERT, with a Streamlit app. Dataset: Kaggle *Amazon Fine Food Reviews*.
 - [x] Step 4: Exploratory text analysis (length, words, phrases, word clouds, distinctive words, sentiment trend)
 - [x] Step 5: Classical ML (bag-of-words / TF-IDF with Naive Bayes, Logistic Regression, Linear SVM)
 - [x] Step 6: Transformers (DistilBERT fine-tuned with the Hugging Face Trainer)
-- [ ] Step 7: Topic modelling (LDA, BERTopic)
+- [x] Step 7: Topic modelling (LDA, BERTopic, c_v coherence)
 - [ ] Step 8: Aspect-based insights
 - [ ] Step 9: Summarization and Streamlit app
 
@@ -109,6 +109,26 @@ Writes `models/distilbert_sentiment/` (model, tokenizer, `inference_config.json`
 `reports/model_comparison_all.csv`, `reports/transformer_errors.csv` and two charts. Add `--batch-size 16` if the GPU
 runs out of memory.
 
+## Topic modelling (Step 7)
+
+```powershell
+pip install bertopic sentence-transformers
+python -m reviews.run_topics --sample            # 15,000 reviews, a few minutes
+python -m reviews.run_topics                     # 100,000 reviews, all sentiments
+python -m reviews.run_topics --scope negative    # negative reviews only: the pain-point view
+```
+
+Two models on a seeded sample of reviews, with negations and filler verbs removed (`DISPLAY_STOPWORDS`):
+**LDA** (scikit-learn) tries 6 to 20 topics on a smaller sample, keeps the number with the best c_v coherence, and refits on
+the full sample; **BERTopic** embeds the raw text with `all-MiniLM-L6-v2` on the GPU, clusters with UMAP and HDBSCAN,
+and names topics from the cleaned words. Both are scored with c_v coherence (target above 0.5) and topic diversity. Gensim has no installable build for
+Python 3.14, so `reviews/coherence.py` re-implements Gensim's c_v (110-token boolean windows, NPMI, cosine); the numbers
+should be close to Gensim's but may differ slightly.
+Every topic gets its share of reviews, mean stars, negative share and "lift" (how much more often it appears in negative
+reviews than average), which feeds the pain-point report in Step 8. Writes `reports/topic_summary.json`,
+`reports/topics_lda.csv`, `reports/topics_bertopic.csv`, `data/processed/topic_assignments.parquet`, the models and
+three charts. File names get `_negative` or `_sample` as suffixes.
+
 ## Cleaning rules (Step 2)
 
 Applied in this order, with the number of rows each rule removes written to `reports/data_quality.json`:
@@ -133,6 +153,7 @@ reviews/   config.py (all settings), labels.py (stars to sentiment, class balanc
            eda.py (counts, phrases, trend), plots.py (charts), explore.py (Step 4 pipeline),
            classical.py (features, models, splits), train_classical.py (Step 5 pipeline),
            transformer.py (thresholds, drift slices, helpers), train_transformer.py (Step 6 pipeline),
+           topics.py (LDA, BERTopic, coherence), run_topics.py (Step 7 pipeline),
            metrics.py (macro-F1, report, inference time, target checks), logging_utils.py
 tests/     pytest suite
 docs/      project_brief.md

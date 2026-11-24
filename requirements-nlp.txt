@@ -1,7 +1,6 @@
 # Installed from Step 3 onward. PyTorch is installed separately (see README) because the RTX 5070 needs the CUDA 12.8 build.
 spacy>=3.7
 nltk>=3.8
-gensim>=4.3
 wordcloud>=1.9
 langdetect>=1.0
 transformers>=4.44
