@@ -214,6 +214,48 @@ class ClassicalConfig:
 
 
 @dataclass(frozen=True)
+class TransformerConfig:
+    """Step 6 settings: fine-tuning DistilBERT with the Hugging Face Trainer."""
+
+    model_name: str = "distilbert-base-uncased"
+    max_length: int = 256                   # covers well over 95% of reviews (95th percentile is 215 words)
+    epochs: int = 2
+    train_batch_size: int = 32
+    eval_batch_size: int = 128
+    learning_rate: float = 2e-5
+    weight_decay: float = 0.01
+    warmup_fraction: float = 0.06           # share of training steps spent warming the learning rate up
+    logging_steps: int = 200
+    bf16: bool = True                       # RTX 30/40/50-series GPUs support bfloat16; faster and half the memory
+    sample_rows: int = 30_000               # size of the quick smoke-test run
+    threshold_min: float = 0.05
+    threshold_max: float = 0.95
+    threshold_step: float = 0.01
+    inference_sample: int = 2000
+    inference_repeats: int = 3
+    inference_batch_size: int = 128
+    error_rows: int = 100
+    slice_fraction: float = 1 / 3           # share of the test set treated as "oldest" and as "newest"
+    model_dir: str = "distilbert_sentiment"
+    results_name: str = "transformer_results"
+    comparison_name: str = "model_comparison_all"
+    errors_name: str = "transformer_errors"
+
+    def __post_init__(self) -> None:
+        """Fail loudly on inconsistent settings."""
+        if min(self.max_length, self.epochs, self.train_batch_size, self.eval_batch_size, self.logging_steps,
+               self.sample_rows, self.inference_sample, self.inference_repeats, self.inference_batch_size,
+               self.error_rows) < 1:
+            raise ValueError("counts in TransformerConfig must be positive")
+        if self.learning_rate <= 0 or not 0 <= self.warmup_fraction < 1:
+            raise ValueError("learning_rate must be positive and warmup_fraction in [0, 1)")
+        if not 0 < self.threshold_min < self.threshold_max < 1 or self.threshold_step <= 0:
+            raise ValueError("thresholds need 0 < min < max < 1 and a positive step")
+        if not 0 < self.slice_fraction <= 0.5:
+            raise ValueError("slice_fraction must be in (0, 0.5]")
+
+
+@dataclass(frozen=True)
 class LabelConfig:
     """Star rating to sentiment, exactly as the brief defines it."""
 
@@ -276,3 +318,4 @@ class ProjectConfig:
     text: TextConfig = field(default_factory=TextConfig)
     eda: EdaConfig = field(default_factory=EdaConfig)
     classical: ClassicalConfig = field(default_factory=ClassicalConfig)
+    transformer: TransformerConfig = field(default_factory=TransformerConfig)

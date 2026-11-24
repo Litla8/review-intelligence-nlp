@@ -10,7 +10,7 @@ DistilBERT, with a Streamlit app. Dataset: Kaggle *Amazon Fine Food Reviews*.
 - [x] Step 3: Text preprocessing (HTML, URLs, contractions, emoticons, spaCy lemmas, negations kept)
 - [x] Step 4: Exploratory text analysis (length, words, phrases, word clouds, distinctive words, sentiment trend)
 - [x] Step 5: Classical ML (bag-of-words / TF-IDF with Naive Bayes, Logistic Regression, Linear SVM)
-- [ ] Step 6: Transformers (DistilBERT)
+- [x] Step 6: Transformers (DistilBERT fine-tuned with the Hugging Face Trainer)
 - [ ] Step 7: Topic modelling (LDA, BERTopic)
 - [ ] Step 8: Aspect-based insights
 - [ ] Step 9: Summarization and Streamlit app
@@ -88,6 +88,27 @@ Writes `models/classical_best.joblib`, `reports/model_comparison.csv`, `reports/
 terms that push hardest towards each class), `reports/classical_errors.csv` (the mistakes the model was most sure
 about) and two charts in `reports/figures/`. Sample runs add `_sample` to every file name.
 
+## Transformer (Step 6)
+
+```powershell
+pip install torch --index-url https://download.pytorch.org/whl/cu128   # RTX 50-series needs the CUDA 12.8 build
+pip install transformers accelerate
+python -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+python -m reviews.train_transformer --sample    # 30,000 reviews, a few minutes
+python -m reviews.train_transformer             # all reviews
+```
+
+Fine-tunes `distilbert-base-uncased` on the raw review text (256 tokens, 2 epochs, bfloat16) using exactly the same
+train / validation / test split as Step 5, so the scores are directly comparable. The probability cut-off for
+"positive" is tuned on the validation set, because 84% of reviews are positive. Reports test accuracy and macro-F1
+(default and tuned), training time, prediction time per 1,000 reviews, whether the 0.88 target is met, and whether
+the gain over the best TF-IDF model is at least 0.01 (the "worth the cost" rule). It also scores the transformer and
+the best TF-IDF model on the oldest and newest third of the test set, and saves the most confident mistakes.
+
+Writes `models/distilbert_sentiment/` (model, tokenizer, `inference_config.json`), `reports/transformer_results.json`,
+`reports/model_comparison_all.csv`, `reports/transformer_errors.csv` and two charts. Add `--batch-size 16` if the GPU
+runs out of memory.
+
 ## Cleaning rules (Step 2)
 
 Applied in this order, with the number of rows each rule removes written to `reports/data_quality.json`:
@@ -111,6 +132,7 @@ reviews/   config.py (all settings), labels.py (stars to sentiment, class balanc
            text.py (text normalisation, lemmas), preprocess.py (Step 3 pipeline),
            eda.py (counts, phrases, trend), plots.py (charts), explore.py (Step 4 pipeline),
            classical.py (features, models, splits), train_classical.py (Step 5 pipeline),
+           transformer.py (thresholds, drift slices, helpers), train_transformer.py (Step 6 pipeline),
            metrics.py (macro-F1, report, inference time, target checks), logging_utils.py
 tests/     pytest suite
 docs/      project_brief.md
