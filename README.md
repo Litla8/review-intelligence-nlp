@@ -1,7 +1,32 @@
 # Customer Review Intelligence (NLP)
 
-Sentiment, topics and aspect-level insights from customer reviews, from a fast TF-IDF baseline to a fine-tuned
-DistilBERT, with a Streamlit app. Dataset: Kaggle *Amazon Fine Food Reviews*.
+Sentiment, topics and aspect-level pain points from customer reviews: a TF-IDF baseline, a fine-tuned DistilBERT,
+topic models, aspect insights with trend alerts, summaries, and a deployed Streamlit app.
+Dataset: Kaggle *Amazon Fine Food Reviews* (about 568,000 reviews).
+
+| | |
+|---|---|
+| **Live app** | https://review-intelligence-nlp-lalit.streamlit.app/ |
+| **Fine-tuned model** | https://huggingface.co/Litla8/review-sentiment-distilbert |
+| **Notebooks** | [01 preprocessing](notebooks/01_preprocessing.ipynb), [02 model training](notebooks/02_model_training.ipynb), [03 topics and aspects](notebooks/03_topics_and_aspects.ipynb) |
+| **Tests** | `pytest` (170 tests, no GPU or data needed) |
+
+## Results
+
+| Goal | Target | Result |
+|---|---|---|
+| Binary sentiment (positive vs negative), macro-F1 | above 0.88 | **0.941** with fine-tuned DistilBERT (best TF-IDF model: 0.882) |
+| Topic coherence (c_v) | above 0.50 | above 0.50 for all four topic models (LDA and BERTopic, all reviews and negative-only) |
+| Aspect insight report | clear report | ten aspects ranked by pain ratio, monthly trend with drop flags, example quotes |
+| Executive summary of pain points | written summary | delivered as a document (ranked pain points, flagged months, actions) |
+
+* DistilBERT beats the best TF-IDF model by more than the 0.01 "worth the cost" rule. Inference cost is reported per 1,000 reviews.
+* Biggest pain points (negative reviews mention them far more than positive ones do): **listing** accuracy (pain ratio 3.4),
+  **safety** (3.3) and **service** (2.8), followed by packaging (1.7) and freshness (1.3). Taste is the most discussed aspect
+  but not the most painful (ratio 1.0).
+* The monthly trend flagged 37 aspect-level drops; the worst months for several aspects at once were 2009-08, 2010-09 and 2009-03.
+* Caveats: aspects come from a keyword lexicon, so a word like "box" or "value" is not always about that aspect; summaries are
+  machine-written; coherence uses a self-written c_v (Gensim has no build for Python 3.14), so values can differ slightly from Gensim's.
 
 ## Status
 
@@ -14,33 +39,64 @@ DistilBERT, with a Streamlit app. Dataset: Kaggle *Amazon Fine Food Reviews*.
 - [x] Step 7: Topic modelling (LDA, BERTopic, c_v coherence)
 - [x] Step 8: Aspect-based insights (pain points per aspect, monthly trend with drop flags)
 - [x] Step 9: Summarization and Streamlit app
+- [x] Deliverables: notebooks, fine-tuned model (Hugging Face), deployed dashboard, executive summary
 
 ## Scope (Step 1)
 
-Three goals: (a) sentiment, (b) topic discovery, (c) aspect insights. Targets: binary macro-F1 above 0.88,
-topic coherence above 0.50, a clear aspect report. Details in [docs/project_brief.md](docs/project_brief.md).
+Three goals: (a) sentiment, (b) topic discovery, (c) aspect insights. Details in [docs/project_brief.md](docs/project_brief.md).
 
-## Setup
+## Quick start
 
-Download `Reviews.csv` from Kaggle ("Amazon Fine Food Reviews") into `data/raw/`.
+Download `Reviews.csv` from Kaggle ("Amazon Fine Food Reviews") into `data/raw/`. Tested on Windows 11 with an NVIDIA RTX 5070.
 
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+pip install torch --index-url https://download.pytorch.org/whl/cu128   # RTX 50-series need the CUDA 12.8 build
+pip install -r requirements-nlp.txt
+python -m spacy download en_core_web_sm
 pytest
 ```
 
-Then clean and label the reviews:
+Run the pipeline in order (every step has a `--sample` flag for a quick check, and sample runs write `_sample` files):
 
 ```powershell
-python -m reviews.prepare    # writes data/processed/reviews_clean.parquet and reports/data_quality.json
+python -m reviews.prepare            # 2. clean and label        -> reports/data_quality.json
+python -m reviews.preprocess         # 3. text preprocessing     -> data/processed/reviews_text.parquet
+python -m reviews.explore            # 4. exploratory analysis   -> reports/figures/
+python -m reviews.train_classical    # 5. TF-IDF models          -> models/classical_best.joblib
+python -m reviews.train_transformer  # 6. DistilBERT (GPU)       -> models/distilbert_sentiment/
+python -m reviews.run_topics         # 7. topics (also: --scope negative)
+python -m reviews.insights           # 8. aspects and drop flags (GPU)
+python -m reviews.summarize          # 9. pain-point summaries   -> reports/pain_point_summaries.md
+streamlit run app/streamlit_app.py   # the app, locally
 ```
 
-From Step 3 on: `pip install -r requirements-nlp.txt`. Install PyTorch first with the CUDA 12.8 build, which the
-RTX 50-series GPUs need: `pip install torch --index-url https://download.pytorch.org/whl/cu128`.
+The notebooks in `notebooks/` run these steps (flags at the top, off by default) and show the results; open them in VS Code
+with the `.venv` kernel and **Run All**.
 
-## Text preprocessing (Step 3)
+## The app
+
+* **Single review:** sentiment, probability, the sentences that mention each aspect with their own sentiment, and a summary for long reviews.
+* **CSV upload:** pick the text, star and date columns; get positive/negative shares, aspect pain points, monthly trend with
+  drop flags, example complaints and a CSV download. With star ratings it also reports how well the model agrees with them.
+
+The deployed app runs on the free Streamlit Community Cloud CPU tier, so it scores at most 2,000 reviews per upload and
+has summaries turned off. Run it locally with a GPU for larger files and summaries.
+
+## Deploying (Streamlit Community Cloud + Hugging Face)
+
+1. Upload the fine-tuned model once: `python -m reviews.publish_model --repo YOUR_HF_USERNAME/review-sentiment-distilbert`
+   (needs a Hugging Face write token in `HF_TOKEN`).
+2. Push the repo to GitHub, then create the app at share.streamlit.io with main file `app/streamlit_app.py` and Python 3.12.
+   Dependencies come from `app/requirements.txt` (CPU-only PyTorch).
+3. In the app's Secrets add `HF_MODEL_REPO = "YOUR_HF_USERNAME/review-sentiment-distilbert"`.
+   Optional: `ENABLE_SUMMARY = "1"` and `APP_MAX_ROWS = "2000"`.
+
+# Step-by-step details
+
+### Text preprocessing (Step 3)
 
 ```powershell
 pip install spacy
@@ -55,7 +111,7 @@ contractions (`don't` becomes `do not`), lower-casing, dropping digits and symbo
 removing stop words. Negations and intensifiers (`not`, `no`, `never`, `but`, `very`, `too` and others, listed in
 `SENTIMENT_WORDS`) are kept, because "not good" must not turn into "good".
 
-## Exploratory analysis (Step 4)
+### Exploratory analysis (Step 4)
 
 ```powershell
 pip install wordcloud
@@ -69,7 +125,7 @@ only hidden when *every* word is on that list, so "not good" stays. "Distinctive
 z-score, so it shows what separates negative from positive reviews rather than what is common to both. Phrases are
 counted on at most 150,000 reviews per sentiment (seeded), and the trend skips months with under 200 reviews.
 
-## Classical models (Step 5)
+### Classical models (Step 5)
 
 ```powershell
 python -m reviews.train_classical --sample   # 40,000 reviews, a few minutes
@@ -88,7 +144,7 @@ Writes `models/classical_best.joblib`, `reports/model_comparison.csv`, `reports/
 terms that push hardest towards each class), `reports/classical_errors.csv` (the mistakes the model was most sure
 about) and two charts in `reports/figures/`. Sample runs add `_sample` to every file name.
 
-## Transformer (Step 6)
+### Transformer (Step 6)
 
 ```powershell
 pip install torch --index-url https://download.pytorch.org/whl/cu128   # RTX 50-series needs the CUDA 12.8 build
@@ -109,7 +165,7 @@ Writes `models/distilbert_sentiment/` (model, tokenizer, `inference_config.json`
 `reports/model_comparison_all.csv`, `reports/transformer_errors.csv` and two charts. Add `--batch-size 16` if the GPU
 runs out of memory.
 
-## Topic modelling (Step 7)
+### Topic modelling (Step 7)
 
 ```powershell
 pip install bertopic sentence-transformers
@@ -129,7 +185,7 @@ reviews than average), which feeds the pain-point report in Step 8. Writes `repo
 `reports/topics_lda.csv`, `reports/topics_bertopic.csv`, `data/processed/topic_assignments.parquet`, the models and
 three charts. File names get `_negative` or `_sample` as suffixes.
 
-## Aspect insights and trend flags (Step 8)
+### Aspect insights and trend flags (Step 8)
 
 ```powershell
 python -m reviews.insights --sample    # 20,000 reviews, a couple of minutes
@@ -147,7 +203,7 @@ months. Keyword matching is a simple lexicon, so a word like "box" or "value" is
 Writes `reports/aspect_summary.csv`, `aspect_trend_yearly.csv`, `monthly_trend.csv`, `aspect_examples.csv` (the most
 negative sentences per aspect, for quotes), `insights_summary.json` and three charts. Sample runs add `_sample`.
 
-## Cleaning rules (Step 2)
+### Cleaning rules (Step 2)
 
 Applied in this order, with the number of rows each rule removes written to `reports/data_quality.json`:
 
@@ -162,42 +218,25 @@ Review text is never changed, so transformer models in Step 6 see the raw text. 
 (1-2 negative, 3 neutral, 4-5 positive). Impossible helpfulness votes (more helpful votes than total votes) are set
 to missing, not dropped, because the text is still fine.
 
+### Summaries and the Streamlit app (Step 9)
+
+`python -m reviews.summarize` picks the most representative negative reviews per aspect (closest to the group's average
+TF-IDF vector) and summarises them with `sshleifer/distilbart-cnn-12-6`; long inputs are split into chunks, summarised,
+and the summaries summarised again. The text is machine-written: check it against the example review Ids before quoting.
+`reviews/analyzer.py` holds the app's logic, `reviews/predict.py` the shared model loader, and
+`reviews/publish_model.py` uploads the model to the Hub.
+
 ## Structure
 
 ```
-reviews/   config.py (all settings), labels.py (stars to sentiment, class balance),
-           data.py (load and clean), prepare.py (Step 2 pipeline),
-           text.py (text normalisation, lemmas), preprocess.py (Step 3 pipeline),
-           eda.py (counts, phrases, trend), plots.py (charts), explore.py (Step 4 pipeline),
-           classical.py (features, models, splits), train_classical.py (Step 5 pipeline),
-           transformer.py (thresholds, drift slices, helpers), train_transformer.py (Step 6 pipeline),
-           topics.py (LDA, BERTopic, coherence), run_topics.py (Step 7 pipeline),
-           aspects.py (aspect tags, sentence sentiment, drop flags), insights.py (Step 8 pipeline),
-           metrics.py (macro-F1, report, inference time, target checks), logging_utils.py
-tests/     pytest suite
-docs/      project_brief.md
-data/      raw and processed data (git-ignored)
+reviews/    config.py (all settings), labels.py, data.py + prepare.py (Step 2), text.py + preprocess.py (Step 3),
+            eda.py + plots.py + explore.py (Step 4), classical.py + train_classical.py (Step 5),
+            transformer.py + train_transformer.py (Step 6), topics.py + coherence.py + run_topics.py (Step 7),
+            aspects.py + insights.py (Step 8), summarize.py (Step 9), predict.py, analyzer.py, publish_model.py,
+            metrics.py, logging_utils.py
+app/        streamlit_app.py, requirements.txt (cloud dependencies)
+notebooks/  01_preprocessing, 02_model_training, 03_topics_and_aspects
+tests/      pytest suite
+docs/       project_brief.md
+data/, models/, reports/   generated files (git-ignored)
 ```
-
-
-## Step 9: Summaries and the Streamlit app
-
-```powershell
-python -m reviews.summarize --sample     # quick check on 3,000 negative reviews (downloads the BART model once)
-python -m reviews.summarize              # full run -> reports/pain_point_summaries.md / .json
-streamlit run app/streamlit_app.py       # paste a review, or upload a CSV for an insights dashboard
-```
-
-* Summaries: the most representative negative reviews per aspect (closest to the group's average TF-IDF vector) are
-  summarised with `sshleifer/distilbart-cnn-12-6` (map-reduce for long inputs). They are machine-written: check
-  them against the example review Ids before quoting.
-* App: single-review tab (sentiment, aspect sentences, summary of long reviews) and an upload tab (pain points per
-  aspect, monthly trend with drop flags, example complaints). Uses the Step 6 model from `models/distilbert_sentiment`.
-
-## Deploying the app (Streamlit Community Cloud)
-
-1. Upload the fine-tuned model once: `python -m reviews.publish_model --repo Litla8/review-sentiment-distilbert`
-2. Push this repo to GitHub, then create the app at share.streamlit.io with main file `app/streamlit_app.py` and Python 3.12.
-3. In the app's Secrets add: `HF_MODEL_REPO = "Litla8/review-sentiment-distilbert"`.
-
-The deployed app runs on the CPU, caps uploads at 2,000 reviews and turns summaries off (set `ENABLE_SUMMARY = "1"` to try them).
