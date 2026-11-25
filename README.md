@@ -196,8 +196,8 @@ streamlit run app/streamlit_app.py       # paste a review, or upload a CSV for a
 
 ## Deploying the app (Streamlit Community Cloud)
 
-1. Upload the fine-tuned model once: `python -m reviews.publish_model --repo YOUR_HF_USERNAME/review-sentiment-distilbert`
+1. Upload the fine-tuned model once: `python -m reviews.publish_model --repo Litla8/review-sentiment-distilbert`
 2. Push this repo to GitHub, then create the app at share.streamlit.io with main file `app/streamlit_app.py` and Python 3.12.
-3. In the app's Secrets add: `HF_MODEL_REPO = "YOUR_HF_USERNAME/review-sentiment-distilbert"`.
+3. In the app's Secrets add: `HF_MODEL_REPO = "Litla8/review-sentiment-distilbert"`.
 
 The deployed app runs on the CPU, caps uploads at 2,000 reviews and turns summaries off (set `ENABLE_SUMMARY = "1"` to try them).
