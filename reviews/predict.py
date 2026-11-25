@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any, Callable, Dict, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -29,11 +29,37 @@ def label_probabilities(p_positive: np.ndarray, threshold: float, cfg: AspectCon
     return np.where(p >= cfg.neutral_high, "positive", np.where(p <= cfg.neutral_low, "negative", "mixed"))
 
 
-def load_scorer(model_dir: Path, max_length: int, batch_size: int, require_cuda: bool = True) -> Scorer:
-    """Return ``scorer(texts) -> P(positive)`` for the model saved in ``model_dir``.
+def resolve_model_dir(local_dir: Path, repo_id: Optional[str] = None) -> Path:
+    """``local_dir`` if it exists, else download ``repo_id`` from the Hugging Face Hub (used when deployed).
 
-    Texts are sorted by length before batching (far less padding) and returned in their original order. Without a
-    GPU the scorer runs on the CPU when ``require_cuda`` is False (fine for single reviews, slow for big files).
+    Raises:
+        FileNotFoundError: If the folder is missing and no ``repo_id`` was given.
+        ImportError: If a download is needed but ``huggingface_hub`` is missing.
+    """
+    if local_dir.is_dir():
+        return local_dir
+    if not repo_id:
+        raise FileNotFoundError(f"{local_dir} not found. Run `python -m reviews.train_transformer` first, "
+                                "or set HF_MODEL_REPO to a Hugging Face model repo.")
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError as exc:
+        raise ImportError("Downloading the model needs huggingface_hub.") from exc
+    LOGGER.info("Downloading %s from the Hugging Face Hub", repo_id)
+    return Path(snapshot_download(repo_id=repo_id))
+
+
+def cuda_available() -> bool:
+    """True if PyTorch is installed and can see a GPU (False, never an error, otherwise)."""
+    try:
+        import torch
+    except ImportError:
+        return False
+    return bool(torch.cuda.is_available())
+
+
+def load_scorers(model_dir: Path, settings: Sequence[Tuple[int, int]], require_cuda: bool = True) -> List[Scorer]:
+    """One scorer per ``(max_length, batch_size)`` pair, all sharing a single copy of the model in memory.
 
     Raises:
         FileNotFoundError: If ``model_dir`` is missing.
@@ -54,17 +80,24 @@ def load_scorer(model_dir: Path, max_length: int, batch_size: int, require_cuda:
     tokenizer = AutoTokenizer.from_pretrained(str(model_dir))
     model = AutoModelForSequenceClassification.from_pretrained(str(model_dir)).to(device).eval()
 
-    def scorer(texts: Sequence[str]) -> np.ndarray:
-        order = np.argsort([len(t) for t in texts], kind="stable")
-        out = np.zeros(len(texts), dtype=np.float64)
-        with torch.no_grad():
-            for start in range(0, len(order), batch_size):
-                idx = order[start:start + batch_size]
-                enc = tokenizer([texts[i] for i in idx], truncation=True, max_length=max_length, padding=True,
-                                return_tensors="pt").to(device)
-                with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=cuda):
-                    logits = model(**enc).logits.float()
-                out[idx] = torch.softmax(logits, dim=-1)[:, 1].cpu().numpy()
-        return out
+    def make(max_length: int, batch_size: int) -> Scorer:
+        def scorer(texts: Sequence[str]) -> np.ndarray:
+            order = np.argsort([len(t) for t in texts], kind="stable")
+            out = np.zeros(len(texts), dtype=np.float64)
+            with torch.no_grad():
+                for start in range(0, len(order), batch_size):
+                    idx = order[start:start + batch_size]
+                    enc = tokenizer([texts[i] for i in idx], truncation=True, max_length=max_length, padding=True,
+                                    return_tensors="pt").to(device)
+                    with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=cuda):
+                        logits = model(**enc).logits.float()
+                    out[idx] = torch.softmax(logits, dim=-1)[:, 1].cpu().numpy()
+            return out
+        return scorer
 
-    return scorer
+    return [make(length, batch) for length, batch in settings]
+
+
+def load_scorer(model_dir: Path, max_length: int, batch_size: int, require_cuda: bool = True) -> Scorer:
+    """Return ``scorer(texts) -> P(positive)`` for the model saved in ``model_dir`` (see :func:`load_scorers`)."""
+    return load_scorers(model_dir, [(max_length, batch_size)], require_cuda)[0]

@@ -4,7 +4,9 @@ Run from the project root:  streamlit run app/streamlit_app.py
 """
 from __future__ import annotations
 
+import os
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,15 +20,24 @@ from reviews import analyzer, predict, summarize
 from reviews.config import ProjectConfig
 
 CFG = ProjectConfig()
-MODEL_DIR = ROOT / CFG.paths.models_dir / CFG.transformer.model_dir
+LOCAL_MODEL_DIR = ROOT / CFG.paths.models_dir / CFG.transformer.model_dir
+MODEL_REPO = os.environ.get("HF_MODEL_REPO")            # set as a secret when deployed
+SUMMARIES = os.environ.get("ENABLE_SUMMARY", "1" if LOCAL_MODEL_DIR.is_dir() else "0") == "1"   # off on small hosts
 
 
 @st.cache_resource(show_spinner="Loading the sentiment model...")
 def get_scorers() -> analyzer.Scorers:
     """Load DistilBERT once (GPU if present, else CPU) and share it across sessions."""
-    review = predict.load_scorer(MODEL_DIR, CFG.app.review_max_length, CFG.app.batch_size, require_cuda=False)
-    sentence = predict.load_scorer(MODEL_DIR, CFG.aspects.max_length, CFG.aspects.batch_size, require_cuda=False)
-    return analyzer.Scorers(review, sentence, predict.read_threshold(MODEL_DIR))
+    model_dir = predict.resolve_model_dir(LOCAL_MODEL_DIR, MODEL_REPO)
+    review, sentence = predict.load_scorers(model_dir, [(CFG.app.review_max_length, CFG.app.batch_size),
+                                                        (CFG.aspects.max_length, CFG.aspects.batch_size)], require_cuda=False)
+    return analyzer.Scorers(review, sentence, predict.read_threshold(model_dir))
+
+
+def app_settings():
+    """Smaller upload cap on CPU-only hosts (override with the APP_MAX_ROWS environment variable / secret)."""
+    default = CFG.app.max_rows if predict.cuda_available() else 2_000
+    return replace(CFG.app, max_rows=int(os.environ.get("APP_MAX_ROWS", default)))
 
 
 @st.cache_resource(show_spinner="Loading the summarisation model (first use downloads it)...")
@@ -56,7 +67,7 @@ def single_review_tab(scorers: analyzer.Scorers) -> None:
         st.dataframe(pd.DataFrame(result["aspect_sentences"]), hide_index=True, use_container_width=True)
     else:
         st.caption("No aspect keywords (taste, price, shipping...) found in this review.")
-    if result["words"] >= CFG.app.long_review_words:
+    if SUMMARIES and result["words"] >= CFG.app.long_review_words:
         summarizer, counter = get_summarizer()
         st.subheader("Summary")
         st.write(summarize.summarize_texts([text], summarizer, counter, CFG.summary)["summary"])
@@ -81,7 +92,7 @@ def dashboard_tab(scorers: analyzer.Scorers) -> None:
         return
     with st.spinner("Scoring reviews..."):
         try:
-            res = analyzer.analyze_frame(df, text_col, scorers, CFG.app, CFG.aspects, CFG.labels,
+            res = analyzer.analyze_frame(df, text_col, scorers, app_settings(), CFG.aspects, CFG.labels,
                                          None if rating_col == "(none)" else rating_col,
                                          None if date_col == "(none)" else date_col)
         except ValueError as exc:
@@ -124,7 +135,7 @@ def main() -> None:
     st.title("Customer Review Intelligence")
     try:
         scorers = get_scorers()
-    except (FileNotFoundError, ImportError, RuntimeError) as exc:
+    except (FileNotFoundError, ImportError, RuntimeError, OSError) as exc:
         st.error(str(exc))
         st.stop()
     tab1, tab2 = st.tabs(["Single review", "Upload CSV dashboard"])

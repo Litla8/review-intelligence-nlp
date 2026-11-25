@@ -24,3 +24,20 @@ def test_label_probabilities_bands() -> None:
 def test_load_scorer_missing_model(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError, match="train_transformer"):
         predict.load_scorer(tmp_path / "nope", 64, 8)
+
+
+def test_resolve_model_dir(tmp_path: Path) -> None:
+    from unittest import mock
+    assert predict.resolve_model_dir(tmp_path) == tmp_path                      # exists: used as is
+    with pytest.raises(FileNotFoundError, match="HF_MODEL_REPO"):
+        predict.resolve_model_dir(tmp_path / "nope")
+    fake_hub = mock.MagicMock()
+    fake_hub.snapshot_download.return_value = str(tmp_path / "cache")
+    with mock.patch.dict("sys.modules", {"huggingface_hub": fake_hub}):
+        assert predict.resolve_model_dir(tmp_path / "nope", "user/model") == tmp_path / "cache"
+    fake_hub.snapshot_download.assert_called_once_with(repo_id="user/model")
+
+
+def test_load_scorers_missing_model(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        predict.load_scorers(tmp_path / "nope", [(64, 8), (128, 8)])
