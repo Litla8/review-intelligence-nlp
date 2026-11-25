@@ -13,7 +13,7 @@ DistilBERT, with a Streamlit app. Dataset: Kaggle *Amazon Fine Food Reviews*.
 - [x] Step 6: Transformers (DistilBERT fine-tuned with the Hugging Face Trainer)
 - [x] Step 7: Topic modelling (LDA, BERTopic, c_v coherence)
 - [x] Step 8: Aspect-based insights (pain points per aspect, monthly trend with drop flags)
-- [ ] Step 9: Summarization and Streamlit app
+- [x] Step 9: Summarization and Streamlit app
 
 ## Scope (Step 1)
 
@@ -178,3 +178,18 @@ tests/     pytest suite
 docs/      project_brief.md
 data/      raw and processed data (git-ignored)
 ```
+
+
+## Step 9: Summaries and the Streamlit app
+
+```powershell
+python -m reviews.summarize --sample     # quick check on 3,000 negative reviews (downloads the BART model once)
+python -m reviews.summarize              # full run -> reports/pain_point_summaries.md / .json
+streamlit run app/streamlit_app.py       # paste a review, or upload a CSV for an insights dashboard
+```
+
+* Summaries: the most representative negative reviews per aspect (closest to the group's average TF-IDF vector) are
+  summarised with `sshleifer/distilbart-cnn-12-6` (map-reduce for long inputs). They are machine-written: check
+  them against the example review Ids before quoting.
+* App: single-review tab (sentiment, aspect sentences, summary of long reviews) and an upload tab (pain points per
+  aspect, monthly trend with drop flags, example complaints). Uses the Step 6 model from `models/distilbert_sentiment`.

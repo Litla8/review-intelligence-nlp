@@ -303,6 +303,51 @@ class TopicConfig:
 
 
 @dataclass(frozen=True)
+class SummaryConfig:
+    """Step 9 settings: abstractive summaries of representative negative reviews per aspect."""
+
+    model_name: str = "sshleifer/distilbart-cnn-12-6"   # a distilled BART: about half the size of bart-large-cnn
+    max_input_tokens: int = 900             # the model reads at most 1,024 tokens; leave room for special tokens
+    max_new_tokens: int = 90
+    min_new_tokens: int = 25
+    num_beams: int = 4
+    batch_size: int = 4
+    reviews_per_group: int = 15             # representative reviews summarised per aspect
+    min_review_words: int = 25              # very short reviews add nothing to a summary
+    max_review_words: int = 150
+    candidate_cap: int = 20_000             # reviews per aspect used to find the representative ones
+    min_group_reviews: int = 100            # skip aspects with fewer negative reviews than this
+    max_levels: int = 3                     # rounds of summarising summaries
+    sample_rows: int = 3_000                # negative reviews used by the quick check
+    report_name: str = "pain_point_summaries"
+
+    def __post_init__(self) -> None:
+        """Fail loudly on inconsistent settings."""
+        if min(self.max_input_tokens, self.max_new_tokens, self.min_new_tokens, self.num_beams, self.batch_size,
+               self.reviews_per_group, self.min_review_words, self.candidate_cap, self.min_group_reviews,
+               self.max_levels, self.sample_rows) < 1:
+            raise ValueError("counts in SummaryConfig must be positive")
+        if self.min_new_tokens > self.max_new_tokens or self.min_review_words > self.max_review_words:
+            raise ValueError("min values must not exceed max values")
+
+
+@dataclass(frozen=True)
+class AppConfig:
+    """Streamlit app settings."""
+
+    max_rows: int = 20_000                  # reviews scored per upload (a seeded sample above this)
+    review_max_length: int = 256            # tokens per review, as in training
+    batch_size: int = 128
+    quotes_per_aspect: int = 3
+    long_review_words: int = 120            # reviews longer than this get a "summarise" button
+
+    def __post_init__(self) -> None:
+        """Fail loudly on inconsistent settings."""
+        if min(self.max_rows, self.review_max_length, self.batch_size, self.quotes_per_aspect, self.long_review_words) < 1:
+            raise ValueError("counts in AppConfig must be positive")
+
+
+@dataclass(frozen=True)
 class LabelConfig:
     """Star rating to sentiment, exactly as the brief defines it."""
 
@@ -402,3 +447,5 @@ class ProjectConfig:
     classical: ClassicalConfig = field(default_factory=ClassicalConfig)
     transformer: TransformerConfig = field(default_factory=TransformerConfig)
     topics: TopicConfig = field(default_factory=TopicConfig)
+    summary: SummaryConfig = field(default_factory=SummaryConfig)
+    app: AppConfig = field(default_factory=AppConfig)

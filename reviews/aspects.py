@@ -135,7 +135,8 @@ def monthly_overall(reviews: pd.DataFrame, min_reviews: int) -> pd.DataFrame:
     """Reviews, mean stars and positive / negative share per month (months with few reviews dropped)."""
     month = reviews["review_date"].dt.to_period("M").dt.to_timestamp()
     sentiment = reviews["sentiment"].astype(str)
-    frame = pd.DataFrame({"n_reviews": month.value_counts().sort_index(), "mean_score": reviews.groupby(month)["Score"].mean(),
+    score = reviews["Score"] if "Score" in reviews.columns else pd.Series(np.nan, index=reviews.index)  # uploads may have no stars
+    frame = pd.DataFrame({"n_reviews": month.value_counts().sort_index(), "mean_score": score.groupby(month).mean(),
                           "share_positive": (sentiment == "positive").groupby(month).mean(),
                           "share_negative": (sentiment == "negative").groupby(month).mean()})
     frame.index.name = "month"

@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 
 from reviews import aspects as asp
-from reviews import plots
+from reviews import plots, predict
 from reviews.config import ProjectConfig
 from reviews.logging_utils import configure_logging
 
@@ -26,43 +26,9 @@ LOGGER = logging.getLogger(__name__)
 
 
 def load_sentence_scorer(cfg: ProjectConfig) -> asp.Scorer:
-    """Return ``scorer(sentences) -> P(positive)`` using the fine-tuned DistilBERT saved in Step 6.
-
-    Sentences are sorted by length before batching (far less padding), then put back in their original order.
-
-    Raises:
-        FileNotFoundError: If the model folder is missing.
-        ImportError: If torch / transformers are missing.
-        RuntimeError: If PyTorch cannot see a GPU.
-    """
-    model_dir = cfg.paths.models_path / cfg.transformer.model_dir
-    if not model_dir.is_dir():
-        raise FileNotFoundError(f"{model_dir} not found. Run `python -m reviews.train_transformer` first.")
-    try:
-        import torch
-        from transformers import AutoModelForSequenceClassification, AutoTokenizer
-    except ImportError as exc:
-        raise ImportError("Step 8 needs torch and transformers (see the Step 6 install commands).") from exc
-    if not torch.cuda.is_available():
-        raise RuntimeError("PyTorch cannot see a CUDA GPU; see the Step 6 install commands.")
-    tokenizer = AutoTokenizer.from_pretrained(str(model_dir))
-    model = AutoModelForSequenceClassification.from_pretrained(str(model_dir)).to("cuda").eval()
-    max_length, batch = cfg.aspects.max_length, cfg.aspects.batch_size
-
-    def scorer(sentences: Sequence[str]) -> np.ndarray:
-        order = np.argsort([len(s) for s in sentences], kind="stable")
-        out = np.zeros(len(sentences), dtype=np.float64)
-        with torch.no_grad():
-            for start in range(0, len(order), batch):
-                idx = order[start:start + batch]
-                enc = tokenizer([sentences[i] for i in idx], truncation=True, max_length=max_length, padding=True,
-                                return_tensors="pt").to("cuda")
-                with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-                    logits = model(**enc).logits.float()
-                out[idx] = torch.softmax(logits, dim=-1)[:, 1].cpu().numpy()
-        return out
-
-    return scorer
+    """Return ``scorer(sentences) -> P(positive)`` using the fine-tuned DistilBERT saved in Step 6 (GPU required)."""
+    return predict.load_scorer(cfg.paths.models_path / cfg.transformer.model_dir, cfg.aspects.max_length,
+                               cfg.aspects.batch_size, require_cuda=True)
 
 
 def analyse(reviews: pd.DataFrame, cfg: ProjectConfig, scorer: asp.Scorer) -> Dict[str, Any]:
